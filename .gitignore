@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+
+# Virtual environments
+venv/
+.venv
+
+# PyTorch
+*.pth
+*.pt
+*.pkl
+*.ckpt
+*.h5
+
+# Project specific
+outputs/
+models/
+logs/
+*.log
+results/
+
+# Large data files (exceed GitHub's 100MB limit)
+# Exclude all .npy files in frame_label directory
+frame_label/*.npy

@@ -1,33 +1,13 @@
-# SST-WSVADL: Spatio-Temporal Weakly Supervised Video Anomaly Detection with Learning
+# SST-WSVADL: Sparse Spatio-Temporal Baseline and Patch-Level Benchmark for Weakly Supervised Video Anomaly Detection
 
-A clean, refactored implementation of a two-stage weakly supervised video anomaly detection framework combining UR-DMU (Uncertainty-Regulated Dual Memory Units) with STPrivacy (Spatio-Temporal Privacy-preserving) for patch-level anomaly detection.
+Official implementation of the Sparse Spatio-Temporal Baseline and Patch-Level Benchmark for Weakly Supervised Video Anomaly Detection.
 
 ## Overview
 
-This repository provides a **simplified and refactored** structure for a two-stage video anomaly detection model:
-- **Stage 1**: Temporal-level anomaly detection using UR-DMU
-- **Stage 2**: Patch-level anomaly detection using STPVAD (Spatio-Temporal Privacy VAD)
+This repository provides the code for a two-stage video anomaly detection
+![Two-Stage VAD Architecture](./images/SST-WSVADL_framework.png)
 
-**Note**: This is a refactored version with clean structure and simplified code. For the full implementation, refer to the original UR-DMU repository. This version provides a clean structure that can be extended to a fully standalone implementation.
-
-## Features
-
-- Clean project structure and organization
-- Simplified configuration management
-- Two-stage training pipeline structure
-- Patch-level spatio-temporal feature extraction (structure)
-- Memory-based anomaly detection mechanism (structure)
-
-## Current Status
-
-This refactored version provides:
-- ✅ Clean directory structure
-- ✅ Simplified configuration system
-- ✅ Simplified training script (structure)
-- ✅ Documentation
-- ⚠️ References original codebase for models and utilities
-
-For full standalone implementation, see `README_REFACTORING.md` for a checklist of components to copy/refactor.
+**Note**: This code is based on the original [UR-DMU](https://github.com/henrryzh1/UR-DMU) and [STPrivacy](https://github.com/ming1993li/stprivacy) repositories. AI was used for refactoring this repository.
 
 ## Installation
 
@@ -35,8 +15,7 @@ For full standalone implementation, see `README_REFACTORING.md` for a checklist 
 
 - Python 3.8+
 - PyTorch 1.8+
-- CUDA-capable GPU (recommended)
-- Access to original UR-DMU and STPrivacy codebases
+- CUDA-capable GPU
 
 ### Setup
 
@@ -50,24 +29,16 @@ cd SST-WSVADL
 pip install -r requirements.txt
 ```
 
-3. Ensure original codebases are accessible:
-```bash
-# The original UR-DMU and STPrivacy codebases should be accessible
-# Update paths in train.py accordingly
-```
-
 ## Dataset Preparation
 
 ### UCF-Crime Dataset
 
 1. Download the UCF-Crime dataset
 2. Extract video features using I3D or VideoMAEv2
-3. Prepare the dataset list files in the `data/` directory
-4. Update paths in the configuration
+3. Prepare the dataset list files in the `list/` directory
+4. Update paths in the configuration and dataset
 
 ## Usage
-
-**Note**: The current implementation provides a structure reference. For full functionality, complete the refactoring as outlined in `README_REFACTORING.md`.
 
 ### Training Structure
 
@@ -82,7 +53,7 @@ python train.py \
     --patch_size 16 \
     --resize 128 128 \
     --output_path ./outputs \
-    --model_path ./models \
+    --model_path ./models/exp_x \
     --video_root /path/to/videos \
     --test_file /path/to/ground_truth.npy
 ```
@@ -97,64 +68,9 @@ python train.py \
 - `--resize`: Resize dimensions for frames (default: 128 128)
 - `--lr`: Learning rate (default: 0.0001)
 - `--num_epochs`: Number of training epochs (default: 4000)
-- `--token_ratio`: Token pruning ratios (default: 1.0 1.0 1.0)
-- `--cross_attention`: Enable cross-attention between stages
-- `--pretrained_point`: Use pretrained UR-DMU model
-
-## Project Structure
-
-```
-SST-WSVADL/
-├── train.py              # Main training script
-├── config.py             # Configuration management
-├── models/               # Model definitions
-│   ├── urdmu.py         # UR-DMU model
-│   └── stpvad.py        # STPVAD model
-├── data/                 # Dataset loaders
-│   └── datasets.py      # Dataset classes
-├── losses/               # Loss functions
-│   └── vad_loss.py      # VAD loss definitions
-├── utils/                # Utility functions
-│   └── utils.py         # Helper functions
-└── eval/                 # Evaluation scripts
-    └── test.py          # Testing and evaluation
-```
-
-## Model Architecture
-
-### Stage 1: UR-DMU (Temporal-level)
-- Memory-based anomaly detection at temporal snippet level
-- Dual memory units (normal and abnormal)
-- Uncertainty regulation mechanism
-
-### Stage 2: STPVAD (Patch-level)
-- Spatio-temporal privacy-preserving feature extraction
-- Patch-level anomaly scoring
-- Cross-attention with temporal snippets
-
-## Citation
-
-If you use this code, please cite the original papers:
-
-```bibtex
-@inproceedings{URDMU_zh,
-  title={Dual memory units with uncertainty regulation for weakly supervised video anomaly detection},
-  author={Zhou, Hang and Yu, Junqing and Yang, Wei},
-  booktitle={Proceedings of the AAAI Conference on Artificial Intelligence},
-  year={2023}
-}
-
-@inproceedings{li2023stprivacy,
-  title={STPrivacy: Spatio-temporal privacy-preserving action recognition},
-  author={Li, Ming and Xu, Xiangyu and Fan, Hehe and others},
-  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
-  year={2023}
-}
-```
-
-## License
-
-This project is released under the MIT License.
+- `--token_ratio`: Token pruning ratios during test (default: 1.0 1.0 1.0)
+- `--cross_attention`: Enable patch-to-snippet attention
+- `--pretrained_point`: Use pretrained UR-DMU model for initializing the weights
 
 ## Acknowledgments
 

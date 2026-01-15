@@ -90,7 +90,7 @@ def extract_frames_from_video(video_path, frame_indices, transform=None):
             frame_range = range(0, min(16, total_frames))  # Default to first 16 frames if empty
         
         frames = vr.get_batch(list(frame_range)).asnumpy().astype(np.uint8)        
-        frame_tensors = [TRANSFORM(frame) for frame in frames]  # list of [C, H, W]
+        frame_tensors = [transform(frame) for frame in frames]  # list of [C, H, W]
         video_tensor = torch.stack(frame_tensors, dim=1)  # [C, T, H, W]
         all_video_tensors.append(video_tensor.unsqueeze(0))
 

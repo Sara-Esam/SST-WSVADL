@@ -109,7 +109,9 @@ def main():
         tubelet_size=config.num_tubelet, all_frames=config.segment_length,
         in_chans=3, num_classes=1, embed_dim=768, depth=12, num_heads=12,
         mlp_ratio=4., pruning_loc=[3, 6, 9], token_ratio=config.token_ratio,
-        distill=False, disable_pruning=config.disable_pruning
+        distill=False, disable_pruning=config.disable_pruning, 
+        motion_loss=config.motion_loss, motion_loss_weight=config.motion_loss_weight,
+        motion_aware_type=config.motion_aware_type
     ).to(device)
 
     # Optimizer
@@ -158,19 +160,14 @@ def main():
                     param_group["lr"] = config.lr[step - 1]
         
         # Training step
-        try:
-            temporal_urdmu_cost, spatial_urdmu_cost, temporal_urdmu_loss, spatial_urdmu_loss = two_stage_train(
+        losses = two_stage_train(
                 temporal_urdmu, spatial_urdmu, dtfe_model,
                 normal_loader_iter, abnormal_loader_iter,
                 normal_dataset, abnormal_dataset,
                 optimizer, temporal_vad_criterion, spatial_vad_criterion, config
             )
-        except Exception as e:
-            print(f"Error in training step {step}: {e}")
-            import traceback
-            traceback.print_exc()
-            continue
-        
+
+        temporal_urdmu_cost, spatial_urdmu_cost = losses[:2]
         # Print progress
         if step % 10 == 0:
             print(f'\nStep {step}:')

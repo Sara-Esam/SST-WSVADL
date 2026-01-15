@@ -17,7 +17,7 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from .memory import Memory_Unit
 from .transformer import Transformer
 from utils.utils import norm
-from cross_attention import CrossAttentionBlock
+from .cross_attention import CrossAttentionBlock
 
 
 class Temporal(Module):

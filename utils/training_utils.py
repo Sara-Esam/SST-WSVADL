@@ -37,11 +37,11 @@ def two_stage_train(urdmu_model, stpvad_model, stp_model,
     
     # Handle different dataset return formats
     if config.dataset == 'xdviolence':
-        nnames, nidx, nlen, normal_sampled_indices = nvr
-        anames, aidx, alen, anomaly_sampled_indices = avr
+        _, nidx, nlen, normal_sampled_indices = nvr
+        _, aidx, alen, anomaly_sampled_indices = avr
     else:
-        nnames, nidx, nlen = nvr
-        anames, aidx, alen = avr
+        _, nidx, nlen = nvr
+        _, aidx, alen = avr
     
     # Extract video readers
     nvrs = [VideoReader(normal_dataset.v_list[i][0]) for i in nidx]
@@ -76,7 +76,7 @@ def two_stage_train(urdmu_model, stpvad_model, stp_model,
         A_index = A_idx_k
         N_index = N_idx_k
         # Extract video tensors: [B,k,C,T,H,W] and per-segment indices [B,k,T]
-        stpvad_results = []
+        spatial_vad_results = []
         for i in range(config.k):
             # Map each per-sample k indices to k frame ranges
             n_frame_ranges = map_topk_snippets_to_frames(N_idx_k[:,i].cpu().numpy(), nlen, new_seg_size=config.segment_length) 
@@ -88,30 +88,29 @@ def two_stage_train(urdmu_model, stpvad_model, stp_model,
 
             # DTFE Model 
             if config.motion_loss:
-                stp_features_normal, s_normal, preserve_index_normal, motion_loss = stp_model(normal_video_tensor)
-                stp_features_anomaly, s_anomaly, preserve_index_anomaly, motion_loss = stp_model(anomaly_video_tensor)
+                stp_features_normal, _, _, motion_loss = stp_model(normal_video_tensor)
+                stp_features_anomaly, _, _, motion_loss = stp_model(anomaly_video_tensor)
             else:
-                stp_features_normal, s_normal, preserve_index_normal = stp_model(normal_video_tensor)
-                stp_features_anomaly, s_anomaly, preserve_index_anomaly = stp_model(anomaly_video_tensor)
+                stp_features_normal, _, _ = stp_model(normal_video_tensor)
+                stp_features_anomaly, _, _ = stp_model(anomaly_video_tensor)
                 
             # Concatenate normal+abnormal on batch axis for the patch VAD
-            data_stpvad = torch.cat([stp_features_normal, stp_features_anomaly], dim=0)           # [2B,k,Tp,Dp]
-            preserve_index_stpvad = torch.cat([preserve_index_normal, preserve_index_anomaly], 0)  # [2B,k,Tp]
-            label_stpvad = torch.cat((nlabel, alabel), 0)     # [2B]
+            data_stpvad = torch.cat([stp_features_normal, stp_features_anomaly], dim=0) # [2B,k,Tp,Dp]
+            label_stpvad = torch.cat((nlabel, alabel), 0) # [2B]
             
             # Stage 2: Spatial Detection
             if config.cross_attention:
                 # mask out the non-topk snippets
                 gather_idx = torch.cat([A_index, N_index], dim=0)
                 masked_snippet_features = result['snippet_features'][:, gather_idx]
-                stpvad_result = stpvad_model(data_stpvad, snippet_features=masked_snippet_features[:,:,i,:])
+                spatial_vad_result = stpvad_model(data_stpvad, snippet_features=masked_snippet_features[:,:,i,:])
             else:
-                stpvad_result = stpvad_model(data_stpvad) 
+                spatial_vad_result = stpvad_model(data_stpvad) 
             
-            stpvad_results.append(stpvad_result)
+            spatial_vad_results.append(spatial_vad_result)
     else:
         anomaly_topk_snippets = A_index.cpu().numpy()  # indices of top-k abnormal snippets
-        normal_topk_snippets = N_index.cpu().numpy()    # indices of top-k normal snippets
+        normal_topk_snippets = N_index.cpu().numpy()   # indices of top-k normal snippets
         
         # get the frame indices
         if config.dataset == 'xdviolence' and config.xdviolence_random_sampling:
@@ -121,58 +120,49 @@ def two_stage_train(urdmu_model, stpvad_model, stp_model,
             anomaly_frame_indices = map_topk_snippets_to_frames(anomaly_topk_snippets, alen, new_seg_size = config.segment_length)
             normal_frame_indices = map_topk_snippets_to_frames(normal_topk_snippets, nlen, new_seg_size = config.segment_length)
         
-        anomaly_video_tensor = extract_frames_from_video([avrs, alen], anomaly_frame_indices, resize=config.resize)
-        normal_video_tensor = extract_frames_from_video([nvrs, nlen], normal_frame_indices, resize=config.resize)
+        anomaly_video_tensor = extract_frames_from_video([avrs, alen], anomaly_frame_indices, transform=transform)
+        normal_video_tensor = extract_frames_from_video([nvrs, nlen], normal_frame_indices, transform=transform)
         
         anomaly_video_tensor = anomaly_video_tensor.float().cuda()
         normal_video_tensor = normal_video_tensor.float().cuda()
 
         # DTFE Model
         if config.motion_loss:
-            stp_features_normal, s_normal, preserve_index_normal, motion_loss = stp_model(normal_video_tensor)
-            stp_features_anomaly, s_anomaly, preserve_index_anomaly, motion_loss = stp_model(anomaly_video_tensor)
+            stp_features_normal, _, _, motion_loss = stp_model(normal_video_tensor)
+            stp_features_anomaly, _, _, motion_loss = stp_model(anomaly_video_tensor)
         else:
-            stp_features_normal, s_normal, preserve_index_normal = stp_model(normal_video_tensor)
-            stp_features_anomaly, s_anomaly, preserve_index_anomaly = stp_model(anomaly_video_tensor)
+            stp_features_normal, _, _ = stp_model(normal_video_tensor)
+            stp_features_anomaly, _, _ = stp_model(anomaly_video_tensor)
 
         data_stpvad = torch.cat((stp_features_normal, 
                                 stp_features_anomaly), 0)
         label_stpvad = torch.cat((nlabel, alabel), 0) 
-
-        # Concatenate preserve indices
-        preserve_index_stpvad = torch.cat((preserve_index_normal, preserve_index_anomaly), 0).cuda()
-        
+      
         # Stage 2: Spatial Detection
         if config.cross_attention:
             # mask out the non-topk snippets
             gather_idx = torch.cat([A_index, N_index], dim=0)
             masked_snippet_features = result['snippet_features'][:, gather_idx]
-            stpvad_result = stpvad_model(data_stpvad, snippet_features=masked_snippet_features)
+            spatial_vad_result = stpvad_model(data_stpvad, snippet_features=masked_snippet_features)
         else:
-            stpvad_result = stpvad_model(data_stpvad)
+            spatial_vad_result = stpvad_model(data_stpvad)
     
     urdmu_cost, urdmu_loss = criterion(result, torch.cat((nlabel, alabel), 0))
     
     if config.multi_k:
-        stpvad_costs = []
+        spatial_vad_costs = []
         for i in range(config.k):
-            c, stpvad_loss = stpvad_criterion(stpvad_results[i], label_stpvad, 
-                                               patch_features=data_stpvad, 
-                                               preserve_index=preserve_index_stpvad,
-                                               num_tubelet=config.num_tubelet)
-            stpvad_costs.append(c)
-        stpvad_cost = torch.stack(stpvad_costs).mean()
+            c, spatial_vad_losses = stpvad_criterion(spatial_vad_results[i], label_stpvad)
+            spatial_vad_costs.append(c)
+        spatial_vad_cost = torch.stack(spatial_vad_costs).mean()
     else:
-        stpvad_cost, stpvad_loss = stpvad_criterion(stpvad_result, label_stpvad, 
-                                               patch_features=data_stpvad, 
-                                               preserve_index=preserve_index_stpvad,
-                                               num_tubelet=config.num_tubelet)
+        spatial_vad_cost, spatial_vad_losses = stpvad_criterion(spatial_vad_result, label_stpvad)
     
     # Accumulate the cost and loss
     if config.motion_loss:
-        total_cost = urdmu_cost + stpvad_cost + motion_loss
+        total_cost = urdmu_cost + spatial_vad_cost + motion_loss
     else:
-        total_cost = urdmu_cost + stpvad_cost
+        total_cost = urdmu_cost + spatial_vad_cost
     
     # Backward and update the parameters
     optimizer.zero_grad()
@@ -180,9 +170,9 @@ def two_stage_train(urdmu_model, stpvad_model, stp_model,
     optimizer.step()
     
     if config.motion_loss:
-        return urdmu_cost, stpvad_cost, urdmu_loss, stpvad_loss, motion_loss
+        return urdmu_cost, spatial_vad_cost, urdmu_loss, spatial_vad_losses, motion_loss
     else:
-        return urdmu_cost, stpvad_cost, urdmu_loss, stpvad_loss
+        return urdmu_cost, spatial_vad_cost, urdmu_loss, spatial_vad_losses
 
 
 
@@ -297,14 +287,14 @@ def two_stage_train(urdmu_model, stpvad_model, stp_model,
     # if hasattr(config, 'cross_attention') and config.cross_attention:
     #     gather_idx = torch.cat([A_index, N_index], dim=0)
     #     masked_snippet_features = result['snippet_features'][:, gather_idx]
-    #     stpvad_result = stpvad_model(data_stpvad, snippet_features=masked_snippet_features)
+    #     spatial_vad_result = stpvad_model(data_stpvad, snippet_features=masked_snippet_features)
     # else:
-    #     stpvad_result = stpvad_model(data_stpvad)
+    #     spatial_vad_result = stpvad_model(data_stpvad)
     
     # # Compute losses
     # urdmu_cost, urdmu_loss = criterion(result, torch.cat((nlabel, alabel), 0))
-    # stpvad_cost, stpvad_loss = stpvad_criterion(
-    #     stpvad_result, label_stpvad,
+    # stpvad_cost, spatial_loss = stpvad_criterion(
+    #     spatial_vad_result, label_stpvad,
     #     patch_features=data_stpvad,
     #     preserve_index=preserve_index_stpvad,
     #     num_tubelet=config.num_tubelet
@@ -318,5 +308,5 @@ def two_stage_train(urdmu_model, stpvad_model, stp_model,
     # total_cost.backward()
     # optimizer.step()
     
-    # return urdmu_cost, stpvad_cost, urdmu_loss, stpvad_loss
+    # return urdmu_cost, stpvad_cost, urdmu_loss, spatial_loss
 

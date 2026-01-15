@@ -40,12 +40,14 @@ class Config:
         
         # Features
         self.cross_attention = getattr(args, 'cross_attention', False)
-        self.enhanced_loss = getattr(args, 'enhanced_loss', False)
         self.pretrained_point = getattr(args, 'pretrained_point', False)
         self.disable_pruning = getattr(args, 'disable_pruning', False)
         self.i3d = getattr(args, 'i3d', False)
         self.xdviolence_random_sampling = getattr(args, 'xdviolence_random_sampling', False)
-
+        self.motion_loss = getattr(args, 'motion_loss', False)
+        self.motion_loss_weight = getattr(args, 'motion_loss_weight', 0.01)
+        self.motion_aware_type = getattr(args, 'motion_aware_type', 'time-reversal')
+        
         # Random top
         self.random_top = getattr(args, 'random_top', False)
         self.multi_k = getattr(args, 'multi_k', False)
@@ -97,9 +99,6 @@ def parse_args():
     parser.add_argument('--seed', type=int, default=2022, help='random seed (-1 for no manual seed)')
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--pretrained_point', action='store_true')
-    parser.add_argument('--supervised', action='store_true', help='Use supervised training')
-    parser.add_argument('--alternate_training', action='store_true',
-                       help='Alternate between VAD and action recognition training')
 
     # ==================== Model Architecture ====================
     parser.add_argument('--resize', type=int, nargs=2, default=[240, 320], help='Resize frames to (H, W)')
@@ -112,9 +111,6 @@ def parse_args():
 
     # ==================== Model Features/Flags ====================
     parser.add_argument('--cross_attention', action='store_true')
-    parser.add_argument('--co_attention', action='store_true', help='Use co-attention')
-    parser.add_argument('--with_residual', action='store_true', help='Add residual after cross-attention')
-    parser.add_argument('--with_har', action='store_true')
     parser.add_argument('--random_top', action='store_true', help='Randomly select a snippet for each sample')
     parser.add_argument('--multi_k', action='store_true', help='Use multi-k')
     parser.add_argument('--k', type=int, default=3, help='Number of snippets to select')
@@ -122,21 +118,9 @@ def parse_args():
     parser.add_argument('--rgb_thermal_fusion', action='store_true', help='Use rgb-thermal fusion')
 
     # ==================== Motion-related Features ====================
-    parser.add_argument('--motion_keep_ratio', type=float, default=0.75, help='Motion keep ratio')
-    parser.add_argument('--motion_based_pruning', action='store_true', help='Use motion-based pruning')
-    parser.add_argument('--motion_filtering', action='store_true', help='Use motion filtering')
-    parser.add_argument('--pure_motion_based_pruning', action='store_true', help='Use pure motion-based pruning')
-    parser.add_argument('--modified_pure_motion_based_pruning', action='store_true', help='modification to make it purely motion based, no MLPs or so')
-    parser.add_argument('--motion_based_urdmu', action='store_true', help='Use motion-based pruning for urdmu in the patch branch')
     parser.add_argument('--motion_loss', action='store_true', help='Use motion loss in STP model')
     parser.add_argument('--motion_loss_weight', type=float, default=0.01, help='Motion loss weight')
     parser.add_argument('--motion_aware_type', type=str, default='time-reversal', help='Motion aware type')
-
-    # ==================== Loss Configuration ====================
-    parser.add_argument('--enhanced_loss', action='store_true')
-    parser.add_argument('--sparse_loss', action='store_true', help='Use sparse loss')
-    parser.add_argument('--adjacency_loss', action='store_true', help='Use adjacency loss')
-    parser.add_argument('--adjacency_loss_weight', type=float, default=0.01, help='Adjacency loss weight')
 
     # ==================== Experimental/Other ====================
     parser.add_argument('--debug', action='store_true')

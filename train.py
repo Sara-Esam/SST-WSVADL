@@ -175,7 +175,7 @@ def main():
             print(f'  Spatial URDMU Loss: {spatial_urdmu_cost.item():.4f}')
         
         # Evaluation
-        if step % 100 == 0 and step > 100:
+        if step % 10 == 0 and step > 20:
             try:
                 test(temporal_urdmu, config, None, test_loader, test_info, step,
                      model_file=None, test_file=args.test_file, i3d=config.i3d)

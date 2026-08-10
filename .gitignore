@@ -14,10 +14,16 @@ venv/
 
 # Project specific
 outputs/
-models/
 logs/
 *.log
 results/
+predictions/
+
+# Exclude saved model files (but keep source code in models/ directory)
+*.pth
+*.pt
+*.pkl
+*.ckpt
 
 # Large data files (exceed GitHub's 100MB limit)
 # Exclude all .npy files in frame_label directory

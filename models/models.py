@@ -165,7 +165,7 @@ class WSVAD_spatial(Module):
         self.encoder_var = nn.Sequential(nn.Linear(512, 512))
         self.relu = nn.ReLU()
         self.triplet = nn.TripletMarginLoss(margin=1)
-        self.psa = CrossAttentionBlock(dim=1024, heads=8, dim_head=64, mlp_dim=512, dropout=0.5)
+        self.cross_attention = CrossAttentionBlock(dim=1024, heads=8, dim_head=64, mlp_dim=512, dropout=0.5)
 
     def _reparameterize(self, mu, logvar):
         std = torch.exp(logvar).sqrt()
@@ -219,19 +219,16 @@ class WSVAD_spatial(Module):
             distance = torch.relu(100 - torch.norm(negative_ax_new, p=2, dim=-1) + torch.norm(anchor_nx_new, p=2, dim=-1)).mean()
             patch_features = torch.cat((x, (torch.cat([N_aug_new + A_Naug, A_aug_new + N_Aaug], dim=0))), dim=-1)
 
-            # Apply cross-attention: patch features (query) attend to snippet features (key-value)
             if snippet_features is not None:
-                cross_attended_features = self.psa(
+                cross_attended_features = self.cross_attention(
                     query=patch_features,
                     key_value=snippet_features
                 )
             else:
                 cross_attended_features = patch_features
             pre_att = self.cls_head(cross_attended_features).reshape((b, n, -1)).mean(1)
-            
-            # Extract patch-level scores
             patch_scores = self.cls_head(cross_attended_features).reshape((b, n, -1))
-            
+
             return {
                     "frame": pre_att,
                     'triplet_margin': triplet_margin_loss,

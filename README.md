@@ -1,9 +1,15 @@
-# Localizing to Debias: A Patch-Level Benchmark and Baseline for Weakly Supervised Spatial Anomaly Detection
-
+# SST-WSVADL
 
 ## Overview
 
-This repository provides the official implementation for the Sparse Spatio-temporal Weakly Supervised Video Anomaly Detection and Localization framework(SST-WSVADL)
+This repository provides the official implementation for Sparse Spatio-temporal Weakly Supervised Video Anomaly Detection and Localization model (SST-WSVADL).   
+
+Published at ECCV 2026 Workshop FAILED
+
+>  **Localizing to Debias: A Patch-Level Benchmark and Baseline for Weakly Supervised Spatial Anomaly Detection**  
+> Sara Abdulaziz, Abdulrahman Al-Abri, Giacomo D'Amicantonio, Egor Bondarev 
+
+
 ![Two-Stage VAD Architecture](./images/SST-WSVADL_framework_readme.jpg)
 
 ## Installation
@@ -27,11 +33,9 @@ pip install -r requirements.txt
 ```
 
 ## Dataset Preparation
-__Option A:__  
-Download the dataset ([UCF-Crime](), [MSAD](), [XD-Violence]()), and extract video features using I3D or VideoMAEv2 public repositories. Then, prepare the dataset list files in the `list/` directory and paths in the configuration.
+__Option A:__ Download the dataset ([UCF-Crime](), [MSAD](), [XD-Violence]()), and extract video features using I3D or VideoMAEv2 public repositories. Then, prepare the dataset list files in the `list/` directory and paths in the configuration.
 
-__Option B:__  
-Download our extracted VideoMAEv2 features, provided here [UCF-Crime](https://drive.google.com/file/d/1yzAbi5Gn64TcnGeCrRBC8L1T_E8Bmeas/view?usp=sharing), [MSAD](), [XD-Violence]().
+__Option B:__ Download our extracted VideoMAEv2 features, provided here [UCF-Crime](https://drive.google.com/file/d/1yzAbi5Gn64TcnGeCrRBC8L1T_E8Bmeas/view?usp=sharing), [MSAD](), [XD-Violence]().
 
 
 ## Usage
@@ -53,19 +57,6 @@ python train.py \
     --video_root /path/to/videos \
     --test_file /path/to/ground_truth.npy
 ```
-
-### Key Parameters
-
-- `--dataset`: Dataset name (default: ucf)
-- `--batch_size`: Batch size for training (default: 16)
-- `--segment_length`: Number of frames per segment (default: 16)
-- `--num_tubelet`: Number of temporal tubelets (default: 8)
-- `--patch_size`: Patch size for spatial division (default: 16)
-- `--resize`: Resize dimensions for frames (default: 128 128)
-- `--lr`: Learning rate (default: 0.0001)
-- `--num_epochs`: Number of training epochs (default: 4000)
-- `--cross_attention`: Enable patch-to-snippet attention
-
 
 ### Patch-level evaluation protocol
 
@@ -90,7 +81,15 @@ How to use the annotations to reproduce our results or compare with SST-WSVADL p
     + compare with our supplementary results at other overlap thresholds by using the `annotations/*_n_quantized.json`
     + compare with our results using the original bbox annotations (see table below).
 
-2. If anomaly predictions are in different format, such as heatmaps produced from attention maps, check our patch to heatmap conversion scheme in << add the file that performs the visualization.>> 
+2. If anomaly predictions are not boxes (e.g. attention / CAM heatmaps, soft score maps):
+    + resize each frame’s map to **128×128**, then aggregate to an **8×8** patch grid
+      (mean or max over each 16×16 cell) to obtain per-patch scores
+    + evaluate with `eval/patch_evaluation_generic.py` against
+      `frame_label/*_gt_patches_0.25.npy` (same overlap rule as the paper GT)
+    + for **bbox TIoU**, threshold the patch map and convert active patches to a
+      tight box (see `patches_to_bbox` in `eval/patch_metrics.py`), then score
+      against `annotations/*_0.25_quantized.json`
+    + do **not** compare continuous heatmaps directly to original boxes **unless** the comparison is made with the original-bbox-produced scores (see our supplementary). Otherwise, the comparison mixes resolution and label definitions with the paper protocol.
 
 
 SST-WSVADL **bbox TIoU (%)** produced by the released checkpoints when scored

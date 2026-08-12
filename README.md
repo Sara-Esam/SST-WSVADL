@@ -8,7 +8,10 @@ Published at ECCV 2026 Workshop FAILED
 
 >  **Localizing to Debias: A Patch-Level Benchmark and Baseline for Weakly Supervised Spatial Anomaly Detection**  
 > Sara Abdulaziz, Abdulrahman Al-Abri, Giacomo D'Amicantonio, Egor Bondarev 
-
+>
+> [![arXiv](https://img.shields.io/badge/arXiv-7933543-b31b1b.svg)](https://arxiv.org/abs/7933543)
+> [![Supplementary](https://img.shields.io/badge/Supplementary-PDF-green.svg)](./Supplementary.pdf)
+> [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 
 ![Two-Stage VAD Architecture](./images/SST-WSVADL_framework_readme.jpg)
 

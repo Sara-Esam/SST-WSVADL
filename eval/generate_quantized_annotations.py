@@ -26,21 +26,21 @@ DATASET_CFG = {
         "stem": "annotations/merged_ucf_crime",
         "original_backup": "annotations/merged_ucf_crime_original.json",
         "sizes_sidecar": "annotations/ucf_video_sizes.json",
-        "video_root": "/projects/0/prjs1250/feature_extraction/Videos/Videos/all_videos_test_only",
+        "video_root": "/path/to/all_videos_test_only",
         "default_size": (240, 320),  # H, W
     },
     "msad": {
         "stem": "annotations/merged_MSAD",
         "original_backup": "annotations/merged_MSAD_original.json",
         "sizes_sidecar": "annotations/msad_video_sizes.json",
-        "video_root": "/projects/0/prjs1250/video_datasets/MSAD/all_videos",
+        "video_root": "/path/to/MSAD/all_videos",
         "default_size": (720, 1280),
     },
     "xdviolence": {
         "stem": "annotations/merged_xd-v",
         "original_backup": "annotations/merged_xd-v_original.json",
         "sizes_sidecar": "annotations/xdviolence_video_sizes.json",
-        "video_root": "/projects/0/prjs1250/video_datasets/xd-violence/all_videos",
+        "video_root": "/path/to/xd-violence/all_videos",
         "default_size": (320, 640),
     },
 }

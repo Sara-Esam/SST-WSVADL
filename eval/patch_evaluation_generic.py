@@ -20,12 +20,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from eval.patch_metrics import (
     DEFAULT_BBOX_ANNOTATIONS,
+    add_bool_arg,
     DEFAULT_NATIVE_SIZE,
     DEFAULT_VIDEO_SIZES,
     build_gt_bboxes_from_annotations,
     evaluate_patch_localization,
     find_optimal_threshold_youden,
     load_bbox_annotations,
+    load_patch_gt,
     load_video_sizes,
 )
 
@@ -64,10 +66,10 @@ def main():
     parser.add_argument("--temporal_threshold", type=float, default=None,
                         help="Override Youden threshold stored in the frame-scores JSON")
     parser.add_argument("--patch_thresholds", type=float, nargs="+", default=[0.5, 0.1, 0.7])
-    parser.add_argument(
-        "--anomaly_frames_only",
-        action=argparse.BooleanOptionalAction,
-        default=False,
+    add_bool_arg(
+        parser,
+        "anomaly_frames_only",
+        False,
         help="If set, average TIoU only over frames with GT boxes. "
              "Default (False) matches the paper table.",
     )
@@ -101,7 +103,7 @@ def main():
 
     meta, frame_scores = load_frame_scores(args.frame_scores)
     patch_preds = np.load(args.patch_preds)
-    patch_gt = np.load(args.patch_gt)
+    patch_gt = load_patch_gt(args.patch_gt)
 
     video_names = meta["video_names"]
     frames_count = meta["frames_count_per_video"]

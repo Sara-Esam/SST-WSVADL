@@ -53,6 +53,20 @@ class Config:
         self.multi_k = getattr(args, 'multi_k', False)
         self.k = getattr(args, 'k', 1)
         self.second_topk = getattr(args, 'second_topk', False)
+        self.spatial_from_tokens = getattr(args, 'spatial_from_tokens', False)
+        self.snippet_agg = getattr(args, 'snippet_agg', 'mean')
+        self.data_variant = getattr(args, 'data_variant', '')
+        self.video_resolution = getattr(args, 'video_resolution', '128')
+        self.dtfe_pretrained = getattr(args, 'dtfe_pretrained', '')
+        self.dtfe_freeze = getattr(args, 'dtfe_freeze', False)
+        self.snippet_drop = getattr(args, 'snippet_drop', 8)
+        self.spatial_pool = getattr(args, 'spatial_pool', 'topk')
+        self.pool_window = getattr(args, 'pool_window', 3)
+        self.contrast_loss_weight = getattr(args, 'contrast_loss_weight', 0.0)
+        self.contrast_margin = getattr(args, 'contrast_margin', 0.3)
+        self.contrast_bottom_k = getattr(args, 'contrast_bottom_k', 16)
+        self.sparsity_loss_weight = getattr(args, 'sparsity_loss_weight', 0.0)
+        self.flip_equivariance_weight = getattr(args, 'flip_equivariance_weight', 0.0)
         
         # Debug
         self.debug = getattr(args, 'debug', False)
@@ -88,6 +102,17 @@ def parse_args():
     parser.add_argument('--len_feature', type=int, default=1408)
     parser.add_argument('--subset', type=int, default=None)
     parser.add_argument('--i3d', action='store_true', help='Use i3d features')
+    parser.add_argument('--video_resolution', type=str, default='128', choices=['128', 'native'],
+                        help='UCF: read frames from the 128x128 copies (default) or the native-resolution '
+                             'videos (use with --resize 224 224)')
+    parser.add_argument('--dtfe_pretrained', type=str, default='',
+                        help='Initialise DTFE from a VideoMAEv2 ViT-B checkpoint, e.g. '
+                             '/path/to/VideoMAEv2/checkpoints/vit_b_k710_dl_from_giant.pth')
+    parser.add_argument('--dtfe_freeze', action='store_true',
+                        help='With --dtfe_pretrained: freeze the DTFE patch embedding and blocks')
+    parser.add_argument('--data_variant', type=str, default='',
+                        help="UCF only: e.g. 'noletterbox' reads all_videos_noletterbox_resized128x128/ "
+                             "and videos_videomaev2_noletterbox/ instead of the original folders")
     parser.add_argument('--clip_features', action='store_true')
     parser.add_argument('--xdviolence_random_sampling', action='store_true', help='Use random sampling for xdviolence')
 
@@ -121,6 +146,32 @@ def parse_args():
     parser.add_argument('--motion_loss', action='store_true', help='Use motion loss in STP model')
     parser.add_argument('--motion_loss_weight', type=float, default=0.01, help='Motion loss weight')
     parser.add_argument('--motion_aware_type', type=str, default='time-reversal', help='Motion aware type')
+    parser.add_argument('--spatial_from_tokens', action='store_true',
+                        help='Score DTFE 768-d tokens with the spatial head instead of reconstructed RGB tubelets')
+    parser.add_argument('--snippet_agg', type=str, default='mean',
+                        choices=['mean', 'drop_ends', 'subsample', 'reverse', 'combine', 'random'],
+                        help='How to map a variable-length snippet sequence onto --num_segments during training. '
+                             'random: pick one method independently each time a sample is drawn')
+    parser.add_argument('--snippet_drop', type=int, default=8,
+                        help='Snippets dropped from each end when snippet_agg is drop_ends or combine')
+
+    # ==================== Spatial Localization Losses ====================
+    parser.add_argument('--spatial_pool', type=str, default='topk', choices=['topk', 'window'],
+                        help='Patch-branch MIL pooling: top t//16+1 patches, or the best '
+                             '--pool_window x --pool_window region of the patch grid')
+    parser.add_argument('--pool_window', type=int, default=3)
+    parser.add_argument('--contrast_loss_weight', type=float, default=0.0,
+                        help='Weight of the within-frame contrast hinge on anomalous clips (0 = off)')
+    parser.add_argument('--contrast_margin', type=float, default=0.3,
+                        help='Required gap between the best region and the lowest patches')
+    parser.add_argument('--contrast_bottom_k', type=int, default=16,
+                        help='Lowest-scoring patches per frame used as the contrast floor')
+    parser.add_argument('--sparsity_loss_weight', type=float, default=0.0,
+                        help='Weight of the mean patch score on anomalous clips (0 = off)')
+    parser.add_argument('--flip_equivariance_weight', type=float, default=0.0,
+                        help='Weight of |map(flip(clip)) - flip(map(clip))|; penalizes heads that '
+                             'score patch positions instead of content (0 = off, costs a second '
+                             'DTFE forward pass)')
 
     # ==================== Experimental/Other ====================
     parser.add_argument('--debug', action='store_true')

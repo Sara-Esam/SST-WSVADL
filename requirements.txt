@@ -6,3 +6,5 @@ decord>=0.6.0
 scikit-learn>=0.24.0
 einops>=0.3.0
 timm>=0.6.0
+opencv-python>=4.5.0
+imageio-ffmpeg>=0.4.5

@@ -26,11 +26,11 @@ from utils.utils import set_seed
 SNIPPET_LENGTH = 16
 
 
-def build_dataset(dataset, len_feature, i3d):
+def build_dataset(dataset, len_feature, i3d, data_variant=''):
     kwargs = dict(root_dir=None, mode="Test", modal="rgb", num_segments=200,
                len_feature=len_feature, is_normal=None, i3d=i3d)
     if dataset == "ucf":
-        return UCFCrime(**kwargs)
+        return UCFCrime(data_variant=data_variant, **kwargs)
     if dataset == "xdviolence":
         return XDViolence(**kwargs)
     if dataset == "msad":
@@ -90,6 +90,7 @@ def main():
     parser.add_argument("--dataset", type=str, default="ucf", choices=["ucf", "xdviolence", "msad"])
     parser.add_argument("--len_feature", type=int, default=1408)
     parser.add_argument("--i3d", action="store_true")
+    parser.add_argument("--data_variant", type=str, default="", help="UCF only, e.g. noletterbox")
     parser.add_argument("--label_dir", type=str, default="frame_label")
     parser.add_argument("--output", type=str, default="predictions/frame_scores.json")
     parser.add_argument("--save_snippet_features", action="store_true",
@@ -105,7 +106,7 @@ def main():
     model = WSAD_temporal(input_size=args.len_feature, flag="Test", a_nums=60, n_nums=60).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device), strict=False)
 
-    dataset = build_dataset(args.dataset, args.len_feature, args.i3d)
+    dataset = build_dataset(args.dataset, args.len_feature, args.i3d, args.data_variant)
     loader = DataLoader(dataset, batch_size=1, shuffle=False, drop_last=False)
 
     pack = export_scores(model, loader, device, subset=args.subset)

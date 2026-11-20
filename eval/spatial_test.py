@@ -450,7 +450,7 @@ def parse_args():
     parser.add_argument('--cross_attention', action = 'store_true')
     parser.add_argument('--enhanced_loss', action = 'store_true')
     parser.add_argument('--pretrained_point', action = 'store_true')
-    parser.add_argument('--video_root', type=str, default='/projects/0/prjs1250/feature_extraction/Videos/Videos/all_videos_test_only')
+    parser.add_argument('--video_root', type=str, default='/path/to/all_videos_test_only')
     parser.add_argument('--disable_pruning', action = 'store_true')
     parser.add_argument("--eval_loc_flag", action = 'store_true')
     parser.add_argument("--anomaly_only_flag", action = 'store_true')

@@ -5,26 +5,63 @@ __pycache__/
 venv/
 .venv
 
-# PyTorch
+# Model checkpoints
 *.pth
 *.pt
-*.pkl
 *.ckpt
 *.h5
+*.pkl
+# ...but the quantized Liu & Ma subset labels are data, not checkpoints
+!frame_label/Liu_Ma_*.pkl
+!frame_label/**/Liu_Ma_*.pkl
 
-# Project specific
+# Run artefacts
 outputs/
 logs/
 *.log
 results/
 predictions/
+slurm-*.out
+*_jobs.txt
+*_jobs2.txt
+*_jobs_failed_missing_feature.txt
+*_job.txt
 
-# Exclude saved model files (but keep source code in models/ directory)
-*.pth
-*.pt
-*.pkl
-*.ckpt
+# Rendered visualizations (large; a few curated ones are committed explicitly)
+vis/
 
-# Large data files (exceed GitHub's 100MB limit)
-# Exclude all .npy files in frame_label directory
+# Large label arrays: the bit-packed .npz equivalents are committed instead
+# (see "Patch-label files shipped with this repository" in the README)
 frame_label/*.npy
+frame_label/**/*.npy
+
+# Cluster job scripts: SLURM-specific, hold site paths and contact addresses.
+# The README gives the equivalent python commands instead.
+*.sh
+
+# Internal notes and side experiments, not part of this release
+docs/
+eccv2026/
+external/
+list/pom/
+frame_label/pom/
+virat_sel.json
+env.yml
+annotations/crossmodal/
+annotations/mining/
+
+# Diagnostics kept internal (they reach into sibling checkouts and extraction trees)
+eval/flip_test.py
+eval/occlusion_maps.py
+eval/summarize_ablation.py
+eval/supervised_probe.py
+
+# tools/ is shared with unrelated work; only the letterbox-free pipeline ships
+tools/*
+!tools/letterbox.py
+!tools/crop_videos.py
+!tools/noletterbox_features.py
+!tools/noletterbox_gt.py
+
+# Local path record for restoring a working checkout (see tools/restore_local_paths.py)
+local_paths.json

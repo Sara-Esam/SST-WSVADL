@@ -3,7 +3,6 @@ Training utilities for two-stage VAD training
 """
 import torch
 import numpy as np
-from decord import VideoReader
 import sys
 import os
 import torchvision.transforms as T
@@ -22,6 +21,8 @@ def two_stage_train(urdmu_model, stpvad_model, stp_model,
     Stage 1: Temporal-level anomaly detection using UR-DMU
     Stage 2: Patch-level anomaly detection using STPVAD
     """
+    if config.multi_k and config.flip_equivariance_weight > 0:
+        raise ValueError("--flip_equivariance_weight is not supported with --multi_k")
     urdmu_model.train()
     urdmu_model.flag = "Train"
     stpvad_model.train()
@@ -43,10 +44,10 @@ def two_stage_train(urdmu_model, stpvad_model, stp_model,
         _, nidx, nlen = nvr
         _, aidx, alen = avr
     
-    # Extract video readers
-    nvrs = [VideoReader(normal_dataset.v_list[i][0]) for i in nidx]
-    avrs = [VideoReader(abnormal_dataset.v_list[i][0]) for i in aidx]
-    
+    # PoM clips are long/high-res: do not open a VideoReader per batch item here
+    # (that OOMs). Pass paths and decode one video at a time at `config.resize`.
+    nvrs = [normal_dataset.v_list[int(i)][0] for i in nidx]
+    avrs = [abnormal_dataset.v_list[int(i)][0] for i in aidx]
     # Stage 1: Temporal-level detection (UR-DMU)
     data = torch.cat((ninput, ainput), 0)
     result = urdmu_model(data)
@@ -81,8 +82,12 @@ def two_stage_train(urdmu_model, stpvad_model, stp_model,
             # Map each per-sample k indices to k frame ranges
             n_frame_ranges = map_topk_snippets_to_frames(N_idx_k[:,i].cpu().numpy(), nlen, new_seg_size=config.segment_length) 
             a_frame_ranges = map_topk_snippets_to_frames(A_idx_k[:,i].cpu().numpy(), alen, new_seg_size=config.segment_length)
-            normal_video_tensor = extract_frames_from_video(nvrs, n_frame_ranges, transform=transform)
-            anomaly_video_tensor = extract_frames_from_video(avrs, a_frame_ranges, transform=transform)
+            normal_video_tensor = extract_frames_from_video(
+                nvrs, n_frame_ranges, transform=transform, resize=config.resize
+            )
+            anomaly_video_tensor = extract_frames_from_video(
+                avrs, a_frame_ranges, transform=transform, resize=config.resize
+            )
             normal_video_tensor = normal_video_tensor.cuda(non_blocking=True)
             anomaly_video_tensor = anomaly_video_tensor.cuda(non_blocking=True)
 
@@ -120,8 +125,12 @@ def two_stage_train(urdmu_model, stpvad_model, stp_model,
             anomaly_frame_indices = map_topk_snippets_to_frames(anomaly_topk_snippets, alen, new_seg_size = config.segment_length)
             normal_frame_indices = map_topk_snippets_to_frames(normal_topk_snippets, nlen, new_seg_size = config.segment_length)
         
-        anomaly_video_tensor = extract_frames_from_video([avrs, alen], anomaly_frame_indices, transform=transform)
-        normal_video_tensor = extract_frames_from_video([nvrs, nlen], normal_frame_indices, transform=transform)
+        anomaly_video_tensor = extract_frames_from_video(
+            [avrs, alen], anomaly_frame_indices, transform=transform, resize=config.resize
+        )
+        normal_video_tensor = extract_frames_from_video(
+            [nvrs, nlen], normal_frame_indices, transform=transform, resize=config.resize
+        )
         
         anomaly_video_tensor = anomaly_video_tensor.float().cuda()
         normal_video_tensor = normal_video_tensor.float().cuda()
@@ -146,6 +155,20 @@ def two_stage_train(urdmu_model, stpvad_model, stp_model,
             spatial_vad_result = stpvad_model(data_stpvad, snippet_features=masked_snippet_features)
         else:
             spatial_vad_result = stpvad_model(data_stpvad)
+
+        # Flip equivariance: the patch map of a mirrored clip should be the mirrored
+        # map. A head that scores patch positions instead of content fails this.
+        flip_equivariance = None
+        if config.flip_equivariance_weight > 0:
+            flipped_clips = torch.cat((normal_video_tensor, anomaly_video_tensor), 0).flip(-1)
+            flipped_features = stp_model(flipped_clips)[0]
+            if config.cross_attention:
+                flipped_result = stpvad_model(flipped_features, snippet_features=masked_snippet_features)
+            else:
+                flipped_result = stpvad_model(flipped_features)
+            maps = stpvad_criterion.grid(spatial_vad_result['frame'])
+            flipped_maps = stpvad_criterion.grid(flipped_result['frame'])
+            flip_equivariance = (flipped_maps - maps.flip(-1)).abs().mean()
     
     urdmu_cost, urdmu_loss = criterion(result, torch.cat((nlabel, alabel), 0))
     
@@ -157,6 +180,9 @@ def two_stage_train(urdmu_model, stpvad_model, stp_model,
         spatial_vad_cost = torch.stack(spatial_vad_costs).mean()
     else:
         spatial_vad_cost, spatial_vad_losses = stpvad_criterion(spatial_vad_result, label_stpvad)
+        if flip_equivariance is not None:
+            spatial_vad_cost = spatial_vad_cost + config.flip_equivariance_weight * flip_equivariance
+            spatial_vad_losses['flip_equivariance'] = flip_equivariance
     
     # Accumulate the cost and loss
     if config.motion_loss:

@@ -5,12 +5,13 @@ tight bbox per frame, then IoU is taken against the GT bbox and gated by the
 temporal score.
 """
 
+import argparse
 import json
 import os
 from collections import defaultdict
 
 import numpy as np
-from sklearn.metrics import roc_curve, auc, precision_recall_curve
+from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
 
 
 DEFAULT_BBOX_ANNOTATIONS = {
@@ -32,9 +33,47 @@ DEFAULT_NATIVE_SIZE = {
 }
 
 
+def add_bool_arg(parser, name, default, help=None):
+    """--flag / --no-flag pair. argparse.BooleanOptionalAction needs Python 3.9+,
+    and the training env (stylegan) is 3.8."""
+    dest = name.lstrip("-").replace("-", "_")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(f"--{name}", dest=dest, action="store_true", help=help)
+    group.add_argument(f"--no-{name}", dest=dest, action="store_false",
+                       help=argparse.SUPPRESS)
+    parser.set_defaults(**{dest: default})
+
+
+def load_patch_gt(path):
+    """Per-frame patch GT, from a plain .npy or the packed .npz shipped with the repo.
+
+    The labels are binary and very repetitive, so a bit-packed, deflated .npz is
+    about five orders of magnitude smaller than the int64 .npy (10 KB vs 568 MB for
+    UCF-Crime) and unpacks to exactly the same array. If `path` names a .npy that is
+    not present, the .npz beside it is used instead, so the historical
+    `--patch_gt frame_label/ucf_gt_patches_0.25.npy` keeps working.
+    """
+    if path.endswith(".npz") or (not os.path.exists(path) and
+                                 os.path.exists(path[:-4] + ".npz")):
+        packed = np.load(path if path.endswith(".npz") else path[:-4] + ".npz")
+        return np.unpackbits(packed["gt"])[:int(packed["n"][0])].astype(np.int64)
+    return np.load(path)
+
+
+def save_patch_gt(path, patch_gt):
+    """Write patch GT as a bit-packed .npz; see load_patch_gt."""
+    flat = np.asarray(patch_gt).ravel().astype(bool)
+    np.savez_compressed(path, gt=np.packbits(flat), n=np.array([flat.size]))
+
+
 def find_optimal_threshold_youden(y_true, y_scores):
     fpr, tpr, thresholds = roc_curve(y_true, y_scores)
-    return float(thresholds[np.argmax(tpr - fpr)])
+    best = float(thresholds[np.argmax(tpr - fpr)])
+    # roc_curve's first threshold is inf (a "predict nothing" operating point);
+    # thresholding at inf would silently blank every prediction.
+    if not np.isfinite(best):
+        return float(np.max(y_scores))
+    return best
 
 
 def patches_to_bbox(patches, patch_size=16, image_size=128):
@@ -81,17 +120,51 @@ def compute_iou(preds, gt, anomaly_only=True):
     return float(np.sum(preds * gt) / (np.sum(preds + gt - preds * gt) + 1e-6))
 
 
+def compute_spatial_pauc_pap(patch_scores, patch_gt, patches_per_frame):
+    """
+    Spatial-only patch AUC / AP: raw patch scores, on frames that contain GT.
+
+    No temporal weighting and no normal frames, so it only asks whether the
+    highlighted patches are the anomalous ones. Chance level: AUC 0.5 and AP equal
+    to the positive-patch rate (returned as the third value).
+    """
+    gt = np.asarray(patch_gt).reshape(-1, patches_per_frame)
+    scores = np.asarray(patch_scores, dtype=np.float64).reshape(-1, patches_per_frame)
+    has_gt = gt.sum(axis=1) > 0
+    gt, scores = gt[has_gt].reshape(-1), scores[has_gt].reshape(-1)
+    fpr, tpr, _ = roc_curve(gt, scores)
+    return float(auc(fpr, tpr)), float(average_precision_score(gt, scores)), float(gt.mean())
+
+
+def trapezoid_pap(gt, scores):
+    """
+    AP as the trapezoidal area under the precision-recall curve: the PAP formula of
+    the original protocol, kept only to reproduce earlier numbers.
+
+    Linear interpolation between PR points is optimistic when many scores are tied:
+    a constant prediction gets far above chance (0.73 vs 0.45 on UCF GT frames).
+    All reported AP values use the step-wise average_precision_score instead.
+    """
+    precision, recall, _ = precision_recall_curve(gt, scores)
+    return float(auc(recall, precision))
+
+
 def compute_pauc_pap(patch_scores, frame_scores, patch_gt, patches_per_frame):
-    """Patch AUC / AP with temporal scores expanded to patch resolution."""
+    """
+    Patch AUC / AP with temporal scores expanded to patch resolution (paper protocol).
+
+    Pools every test frame, normal videos included, and multiplies patch scores by the
+    frame's temporal score, so a strong temporal branch alone yields a high value.
+    See compute_spatial_pauc_pap for the spatial-only counterpart.
+    """
     frame_exp = np.repeat(np.asarray(frame_scores, dtype=np.float64), patches_per_frame)
     scores = np.asarray(patch_scores, dtype=np.float64) * frame_exp
     gt = np.asarray(patch_gt)
 
     fpr, tpr, _ = roc_curve(gt, scores)
     pauc = float(auc(fpr, tpr))
-    precision, recall, _ = precision_recall_curve(gt, scores)
-    pap = float(auc(recall, precision))
-    return pauc, pap
+    pap = float(average_precision_score(gt, scores))
+    return pauc, pap, trapezoid_pap(gt, scores)
 
 
 def corners_to_xyxy(corners):
@@ -328,10 +401,16 @@ def evaluate_patch_localization(
     gt_bboxes=None,
 ):
     """Report PAUC/PAP and TIoU at several patch score thresholds."""
-    pauc, pap = compute_pauc_pap(patch_scores, frame_scores, patch_gt, patches_per_frame)
-    print(f"PAUC: {pauc:.4f}, PAP: {pap:.4f}")
+    pauc, pap, pap_trapezoid = compute_pauc_pap(patch_scores, frame_scores, patch_gt, patches_per_frame)
+    print(f"PAUC: {pauc:.4f}, PAP: {pap:.4f}  (temporal-weighted, all test frames; "
+          f"legacy trapezoidal PAP {pap_trapezoid:.4f})")
+    s_pauc, s_pap, pos_rate = compute_spatial_pauc_pap(patch_scores, patch_gt, patches_per_frame)
+    print(f"Spatial PAUC: {s_pauc:.4f}, spatial PAP: {s_pap:.4f}  "
+          f"(patch scores only, GT frames only; chance AUC 0.5, AP {pos_rate:.4f})")
 
-    results = {"pauc": pauc, "pap": pap, "tiou": {}}
+    results = {"pauc": pauc, "pap": pap, "pap_trapezoid_legacy": pap_trapezoid,
+               "spatial_pauc": s_pauc, "spatial_pap": s_pap,
+               "spatial_pap_chance": pos_rate, "tiou": {}}
     for thr in patch_thresholds:
         tiou, n = compute_tiou(
             patch_scores,

@@ -650,7 +650,7 @@ class DTFEModel(nn.Module):
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., hybrid_backbone=None, norm_layer=None, 
                  pruning_loc=None, token_ratio=None, distill=False, disable_pruning=False, clip_features=False, 
                  sparse_loss=False, motion_loss=False, motion_loss_weight=0.01, adjacency_loss=False, adjacency_loss_weight=0.01, 
-                 motion_aware_type='time-reversal'):
+                 motion_aware_type='time-reversal', spatial_from_tokens=False):
         super().__init__()
         self.img_size = img_size
         self.num_classes = num_classes
@@ -666,7 +666,13 @@ class DTFEModel(nn.Module):
         self.motion_aware_type = motion_aware_type
         self.adjacency_loss = adjacency_loss
         self.adjacency_loss_weight = adjacency_loss_weight
+        self.spatial_from_tokens = spatial_from_tokens
         self.global_step = 0
+        # Pretrained VideoMAEv2 weights expect ImageNet-normalised [0, 1] input. The flag is a
+        # buffer so checkpoints carry it; checkpoints without it load as 0 (no-op).
+        self.register_buffer('input_norm', torch.zeros(1))
+        self.register_buffer('input_mean', torch.tensor(IMAGENET_DEFAULT_MEAN).view(1, 3, 1, 1, 1))
+        self.register_buffer('input_std', torch.tensor(IMAGENET_DEFAULT_STD).view(1, 3, 1, 1, 1))
         if self.clip_features:
             self.clip_weight = nn.Linear(768, 64, bias=False)
 
@@ -751,6 +757,8 @@ class DTFEModel(nn.Module):
 
     def forward(self, x):
         B = x.shape[0]
+        if self.input_norm.item() > 0:
+            x = (x - self.input_mean) / self.input_std
         if self.motion_loss:
             if self.motion_aware_type == 'varience':
                 selected_tubelets, top_indices, motion_scores, x = self.patch_embed(x)
@@ -819,7 +827,8 @@ class DTFEModel(nn.Module):
                         x = blk(x)
 
         x = self.norm_recon(x)
-        x = self.head_recon(x)
+        if not self.spatial_from_tokens:
+            x = self.head_recon(x)
         motion_loss = self.motion_loss_weight* motion_loss.mean() if (self.motion_loss and self.training) else 0
 
         
